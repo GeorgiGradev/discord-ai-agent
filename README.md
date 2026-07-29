@@ -1,12 +1,12 @@
-# Anabella — Discord AI Assistant
+# Anabella - Discord AI Assistant
 
-Personal Discord bot that ingests **two Gmail accounts** (IMAP), syncs **Google Calendar** (secret iCal URL), and posts **verified payment extractions** to private Discord channels — with **deterministic parsers first**, LLM fallback later, and an eval harness to measure hallucination risk.
+Personal Discord AI bot that ingests **Gmail accounts** (IMAP), syncs **Google Calendar** (secret iCal URL), and posts **verified payment extractions** to private Discord channels with **deterministic parsers first**, LLM fallback later, and an eval harness to measure hallucination risk.
 
 > Read-only by design: no outbound email, no payments, no calendar writes.
 
 ## Why this project
 
-Most “AI assistants” over email fail silently — wrong amounts, invented due dates, confident nonsense. Anabella inverts that:
+Most “AI assistants” over email fail silently - wrong amounts, invented due dates, confident nonsense. Anabella inverts that:
 
 1. **Gmail labels + sender routing** decide the pipeline (zero LLM cost).
 2. **Template extractors** parse recurring bill formats (UBB utility table, Anthropic receipts).
