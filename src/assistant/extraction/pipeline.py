@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from assistant.config import Settings
 from assistant.db.models import RawMessage
 from assistant.extraction.base import ExtractedRecord, MessageView
 from assistant.extraction.jsonld import extract_jsonld
+from assistant.extraction.llm_fallback import extract_with_llm
 from assistant.extraction.persist import persist_extracted_records
 from assistant.extraction.registry import get_template_extractors
+from assistant.extraction.validation import ExtractionRejected
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,14 @@ PAYMENT_SENDER_HINTS = (
 
 
 @dataclass(frozen=True)
+class FailedExtraction:
+    message_id: int
+    subject: str | None
+    sender: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
 class ExtractionResult:
     processed: int
     extracted: int
@@ -36,6 +47,7 @@ class ExtractionResult:
     failed: int
     inserted_records: int
     new_record_ids: list[int]
+    failures: list[FailedExtraction] = field(default_factory=list)
 
 
 def _message_view(row: RawMessage) -> MessageView:
@@ -65,8 +77,10 @@ def _is_payment_candidate(msg: MessageView) -> bool:
     return any(extractor.matches(msg) for extractor in get_template_extractors())
 
 
-def _run_cascade(msg: MessageView) -> tuple[list[ExtractedRecord], str | None, bool]:
-    """Returns records, extractor name, and whether a template matched but failed."""
+def run_deterministic_cascade(
+    msg: MessageView,
+) -> tuple[list[ExtractedRecord], str | None, bool]:
+    """JSON-LD and template extractors only (used by eval harness)."""
     jsonld_records = extract_jsonld(msg)
     if jsonld_records:
         return jsonld_records, "jsonld", False
@@ -91,14 +105,47 @@ def _run_cascade(msg: MessageView) -> tuple[list[ExtractedRecord], str | None, b
     return [], None, False
 
 
+async def run_cascade(
+    msg: MessageView,
+    settings: Settings | None,
+) -> tuple[list[ExtractedRecord], str | None, bool]:
+    """Deterministic cascade, then optional LLM fallback."""
+    records, extractor_name, template_miss = run_deterministic_cascade(msg)
+    if records:
+        return records, extractor_name, False
+
+    if settings is None or not settings.llm_extraction_enabled or not settings.anthropic_api_key:
+        if template_miss and settings is not None and not settings.anthropic_api_key:
+            logger.warning(
+                "Template miss for message %s but ANTHROPIC_API_KEY is not set",
+                msg.id,
+            )
+        return records, extractor_name, template_miss
+
+    try:
+        llm_records = await extract_with_llm(msg, settings)
+    except ExtractionRejected as exc:
+        logger.warning("LLM extraction rejected for message %s: %s", msg.id, exc)
+        return [], extractor_name or "llm_haiku", True
+    except Exception:
+        logger.exception("LLM extraction failed for message %s", msg.id)
+        raise
+
+    if llm_records:
+        return llm_records, "llm_haiku", False
+    return [], extractor_name, template_miss
+
+
 async def process_pending_messages(
     session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings | None = None,
     *,
     batch_size: int = BATCH_SIZE,
 ) -> ExtractionResult:
     processed = extracted = skipped = no_match = failed = 0
     inserted_total = 0
     new_record_ids: list[int] = []
+    failures: list[FailedExtraction] = []
 
     async with session_factory() as session:
         pending = (
@@ -123,7 +170,7 @@ async def process_pending_messages(
 
         processed += 1
         try:
-            records, extractor_name, template_miss = _run_cascade(msg)
+            records, extractor_name, template_miss = await run_cascade(msg, settings)
         except Exception:
             async with session_factory() as session:
                 db_row = await session.get(RawMessage, row.id)
@@ -131,10 +178,23 @@ async def process_pending_messages(
                     db_row.extraction_status = "failed"
                     await session.commit()
             failed += 1
+            failures.append(
+                FailedExtraction(
+                    message_id=row.id,
+                    subject=row.subject,
+                    sender=row.sender,
+                    reason="unexpected extraction error",
+                )
+            )
             continue
 
         if not records:
             status = "failed" if template_miss else "no_match"
+            reason = (
+                "template/LLM could not extract valid records"
+                if template_miss
+                else "no matching extractor"
+            )
             async with session_factory() as session:
                 db_row = await session.get(RawMessage, row.id)
                 if db_row is not None:
@@ -142,6 +202,14 @@ async def process_pending_messages(
                     await session.commit()
             if template_miss:
                 failed += 1
+                failures.append(
+                    FailedExtraction(
+                        message_id=row.id,
+                        subject=row.subject,
+                        sender=row.sender,
+                        reason=reason,
+                    )
+                )
             else:
                 no_match += 1
             continue
@@ -170,4 +238,5 @@ async def process_pending_messages(
         failed=failed,
         inserted_records=inserted_total,
         new_record_ids=new_record_ids,
+        failures=failures,
     )

@@ -10,7 +10,7 @@ from typing import Any
 from assistant.domain.payments import RecordType, normalize_payee
 from assistant.extraction.base import ExtractedRecord, MessageView
 from assistant.extraction.money import find_verbatim_quote
-from assistant.extraction.pipeline import _run_cascade
+from assistant.extraction.pipeline import run_deterministic_cascade
 from assistant.extraction.validation import validate_records
 
 EVAL_ROOT = Path(__file__).parent
@@ -336,7 +336,7 @@ def evaluate_case(case: EvalCase, report: EvalReport) -> bool:
     msg = _message_view(case)
 
     try:
-        records, extractor_name, template_miss = _run_cascade(msg)
+        records, extractor_name, template_miss = run_deterministic_cascade(msg)
     except Exception as exc:
         report.failures.append(f"{case.id}: cascade raised {exc!r}")
         return False

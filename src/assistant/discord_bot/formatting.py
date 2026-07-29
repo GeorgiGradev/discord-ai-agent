@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from assistant.db.models import PaymentRecord
 from assistant.domain.payments import RecordType, format_amount_minor
+from assistant.extraction.pipeline import FailedExtraction
 
 
 def format_payment_record(record: PaymentRecord) -> str:
@@ -24,6 +25,16 @@ def format_payment_record(record: PaymentRecord) -> str:
             quote = quote[:159] + "…"
         lines.append(f"> {quote}")
     return "\n".join(lines)
+
+
+def format_extraction_failure(failure: FailedExtraction) -> str:
+    subject = failure.subject or "(без тема)"
+    sender = failure.sender or "неизвестен"
+    return (
+        f"**Extraction failed** `[m:{failure.message_id}]`\n"
+        f"_{subject[:120]}_\n"
+        f"`{sender}` · {failure.reason}"
+    )
 
 
 def format_extraction_summary(

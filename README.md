@@ -1,12 +1,12 @@
-# Anabella — Discord AI Assistant
+# Anabella - Discord AI Assistant
 
-Personal Discord bot that ingests **two Gmail accounts** (IMAP), syncs **Google Calendar** (secret iCal URL), and posts **verified payment extractions** to private Discord channels - with **deterministic parsers first**, LLM fallback later, and an eval harness to measure hallucination risk.
+Personal Discord bot that ingests **Gmail accounts** (IMAP), syncs **Google Calendar** (secret iCal URL), and posts **verified payment extractions** to private Discord channels - with **deterministic parsers first**, LLM fallback later, and an eval harness to measure hallucination risk.
 
 > Read-only by design: no outbound email, no payments, no calendar writes.
 
 ## Why this project
 
-Most “AI assistants” over email fail silently — wrong amounts, invented due dates, confident nonsense. Anabella inverts that:
+Most “AI assistants” over email fail silently - wrong amounts, invented due dates, confident nonsense. Anabella inverts that:
 
 1. **Gmail labels + sender routing** decide the pipeline (zero LLM cost).
 2. **Template extractors** parse recurring bill formats (UBB utility table, Anthropic receipts).
@@ -28,16 +28,16 @@ Gmail (IMAP) ──► raw_messages (Postgres)
 Google Calendar (ICS) ──► calendar_events ──► Discord #general
 ```
 
-| Layer | Status |
-|-------|--------|
-| Postgres 17 + pgvector, Alembic | ✅ |
-| Multi-account IMAP sync (UID cursor, X-GM-MSGID) | ✅ |
-| Calendar ICS sync (ETag, RRULE expansion) | ✅ |
-| Payment extraction (UBB, Anthropic templates) | ✅ |
-| Eval harness (`tests/eval/`) | ✅ |
-| LLM fallback extraction (Haiku + verbatim validation) | ✅ |
-| Conference/career events → `#events` | 🔜 B5 |
-| Grounded chat + memory | 🔜 C1–C3 |
+| Layer                                                 | Status   |
+| ----------------------------------------------------- | -------- |
+| Postgres 17 + pgvector, Alembic                       | ✅       |
+| Multi-account IMAP sync (UID cursor, X-GM-MSGID)      | ✅       |
+| Calendar ICS sync (ETag, RRULE expansion)             | ✅       |
+| Payment extraction (UBB, Anthropic templates)         | ✅       |
+| Eval harness (`tests/eval/`)                          | ✅       |
+| LLM fallback extraction (Haiku + verbatim validation) | ✅       |
+| Conference/career events → `#events`                  | 🔜 B5    |
+| Grounded chat + memory                                | 🔜 C1–C3 |
 
 ## Quick start (local)
 

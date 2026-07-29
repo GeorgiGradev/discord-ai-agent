@@ -13,7 +13,11 @@ from assistant.config import Settings
 from assistant.crypto import SecretBox
 from assistant.db.session import get_session_factory
 from assistant.ingest.accounts import bootstrap_accounts
-from assistant.discord_bot.formatting import format_extraction_summary, format_payment_record
+from assistant.discord_bot.formatting import (
+    format_extraction_failure,
+    format_extraction_summary,
+    format_payment_record,
+)
 from assistant.extraction.pipeline import process_pending_messages
 from assistant.ingest.ics_sync import IcsSyncResult, UpcomingEventSummary, sync_all_calendars
 from assistant.ingest.imap_sync import AccountSyncResult, SyncedMessageSummary, sync_all_accounts
@@ -171,7 +175,7 @@ async def run_extraction(bot: commands.Bot, settings: Settings) -> None:
     from assistant.db.models import PaymentRecord
 
     logger.info("Extraction starting")
-    result = await process_pending_messages(session_factory)
+    result = await process_pending_messages(session_factory, settings)
     logger.info(
         "Extraction done: processed=%d extracted=%d inserted=%d no_match=%d failed=%d skipped=%d",
         result.processed,
@@ -206,6 +210,13 @@ async def run_extraction(bot: commands.Bot, settings: Settings) -> None:
             ).all()
         for record in records:
             messages.append(format_payment_record(record))
+
+    if result.failures:
+        for failure in result.failures[:5]:
+            messages.append(format_extraction_failure(failure))
+        remaining = len(result.failures) - 5
+        if remaining > 0:
+            messages.append(f"_… и още **{remaining}** неуспешни извличания_")
 
     if messages:
         await _notify_payments(bot, settings, _chunk_discord_messages(messages, fallback="**Extraction**"))

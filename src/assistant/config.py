@@ -39,6 +39,7 @@ class Settings(BaseSettings):
         default=0.35, alias="MEMORY_SIMILARITY_THRESHOLD"
     )
     citation_max_retries: int = Field(default=1, alias="CITATION_MAX_RETRIES")
+    llm_extraction_enabled: bool = Field(default=True, alias="LLM_EXTRACTION_ENABLED")
 
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     anthropic_model_haiku: str = Field(
