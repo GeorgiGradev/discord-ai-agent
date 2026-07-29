@@ -7,6 +7,7 @@ import sys
 
 from assistant.config import get_settings
 from assistant.extraction.base import MessageView
+from assistant.extraction.llm_cost import format_llm_usage_summary
 from assistant.extraction.llm_fallback import extract_with_llm
 
 
@@ -31,7 +32,10 @@ async def main() -> int:
     print(f"Model: {settings.anthropic_model_haiku}")
     print("Calling Haiku (small test extraction)...")
 
-    records = await extract_with_llm(msg, settings)
+    records, usage = await extract_with_llm(msg, settings)
+    if usage.has_usage:
+        print(format_llm_usage_summary(usage).replace("**", ""))
+
     if not records:
         print("OK — API works, but model returned zero records for the test email.")
         return 0

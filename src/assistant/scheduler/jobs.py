@@ -18,6 +18,7 @@ from assistant.discord_bot.formatting import (
     format_extraction_summary,
     format_payment_record,
 )
+from assistant.extraction.llm_cost import format_llm_usage_summary
 from assistant.extraction.pipeline import process_pending_messages
 from assistant.ingest.ics_sync import IcsSyncResult, UpcomingEventSummary, sync_all_calendars
 from assistant.ingest.imap_sync import AccountSyncResult, SyncedMessageSummary, sync_all_accounts
@@ -187,7 +188,7 @@ async def run_extraction(bot: commands.Bot, settings: Settings) -> None:
     )
 
     messages: list[str] = []
-    if result.processed or result.no_match or result.failed:
+    if result.processed or result.no_match or result.failed or result.llm_usage.has_usage:
         messages.append(
             format_extraction_summary(
                 processed=result.processed,
@@ -198,6 +199,9 @@ async def run_extraction(bot: commands.Bot, settings: Settings) -> None:
                 inserted_records=result.inserted_records,
             )
         )
+
+    if result.llm_usage.has_usage:
+        messages.append(format_llm_usage_summary(result.llm_usage))
 
     if result.new_record_ids:
         async with session_factory() as session:

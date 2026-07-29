@@ -12,6 +12,7 @@ from selectolax.parser import HTMLParser
 from assistant.config import Settings
 from assistant.domain.payments import RecordType
 from assistant.extraction.base import ExtractedRecord, MessageView
+from assistant.extraction.llm_cost import LlmUsage, LlmUsageTotals, format_llm_cost_usd
 from assistant.extraction.money import parse_money_token
 from assistant.extraction.validation import ExtractionRejected, validate_records
 
@@ -134,7 +135,7 @@ def _parse_tool_payload(data: object) -> LlmExtractionPayload:
     return LlmExtractionPayload.model_validate(data)
 
 
-async def _call_anthropic(msg: MessageView, settings: Settings) -> LlmExtractionPayload:
+async def _call_anthropic(msg: MessageView, settings: Settings) -> tuple[LlmExtractionPayload, LlmUsage]:
     from anthropic import AsyncAnthropic
 
     body = message_body_for_llm(msg)
@@ -157,28 +158,46 @@ async def _call_anthropic(msg: MessageView, settings: Settings) -> LlmExtraction
         tool_choice={"type": "tool", "name": TOOL_NAME},
     )
 
+    usage = LlmUsage(
+        model=settings.anthropic_model_haiku,
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
+    )
+    logger.info(
+        "LLM call message=%s model=%s in=%d out=%d est=%s",
+        msg.id,
+        usage.model,
+        usage.input_tokens,
+        usage.output_tokens,
+        format_llm_cost_usd(usage.estimated_cost_usd()),
+    )
+
     for block in response.content:
         if block.type == "tool_use" and block.name == TOOL_NAME:
-            return _parse_tool_payload(block.input)
+            return _parse_tool_payload(block.input), usage
 
     raise ExtractionRejected("LLM did not return structured extraction")
 
 
-async def extract_with_llm(msg: MessageView, settings: Settings) -> list[ExtractedRecord]:
+async def extract_with_llm(
+    msg: MessageView, settings: Settings
+) -> tuple[list[ExtractedRecord], LlmUsageTotals]:
     """Run Haiku extraction with retries on verbatim validation failure."""
     if not settings.anthropic_api_key:
         raise ExtractionRejected("ANTHROPIC_API_KEY is not configured")
 
     max_attempts = max(1, settings.citation_max_retries + 1)
     last_error: ExtractionRejected | None = None
+    usage_totals = LlmUsageTotals()
 
     for attempt in range(1, max_attempts + 1):
         try:
-            payload = await _call_anthropic(msg, settings)
+            payload, usage = await _call_anthropic(msg, settings)
+            usage_totals.add(usage)
             if not payload.records:
-                return []
+                return [], usage_totals
             records = [_to_extracted_record(item) for item in payload.records]
-            return validate_records(msg, records)
+            return validate_records(msg, records), usage_totals
         except ExtractionRejected as exc:
             last_error = exc
             logger.warning(
@@ -190,4 +209,4 @@ async def extract_with_llm(msg: MessageView, settings: Settings) -> list[Extract
             )
 
     assert last_error is not None
-    raise last_error
+    return [], usage_totals

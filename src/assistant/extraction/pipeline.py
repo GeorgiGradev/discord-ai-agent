@@ -12,6 +12,7 @@ from assistant.config import Settings
 from assistant.db.models import RawMessage
 from assistant.extraction.base import ExtractedRecord, MessageView
 from assistant.extraction.jsonld import extract_jsonld
+from assistant.extraction.llm_cost import LlmUsageTotals
 from assistant.extraction.llm_fallback import extract_with_llm
 from assistant.extraction.persist import persist_extracted_records
 from assistant.extraction.registry import get_template_extractors
@@ -48,6 +49,7 @@ class ExtractionResult:
     inserted_records: int
     new_record_ids: list[int]
     failures: list[FailedExtraction] = field(default_factory=list)
+    llm_usage: LlmUsageTotals = field(default_factory=LlmUsageTotals)
 
 
 def _message_view(row: RawMessage) -> MessageView:
@@ -108,11 +110,12 @@ def run_deterministic_cascade(
 async def run_cascade(
     msg: MessageView,
     settings: Settings | None,
-) -> tuple[list[ExtractedRecord], str | None, bool]:
+) -> tuple[list[ExtractedRecord], str | None, bool, LlmUsageTotals]:
     """Deterministic cascade, then optional LLM fallback."""
+    empty_usage = LlmUsageTotals()
     records, extractor_name, template_miss = run_deterministic_cascade(msg)
     if records:
-        return records, extractor_name, False
+        return records, extractor_name, False, empty_usage
 
     if settings is None or not settings.llm_extraction_enabled or not settings.anthropic_api_key:
         if template_miss and settings is not None and not settings.anthropic_api_key:
@@ -120,20 +123,22 @@ async def run_cascade(
                 "Template miss for message %s but ANTHROPIC_API_KEY is not set",
                 msg.id,
             )
-        return records, extractor_name, template_miss
+        return records, extractor_name, template_miss, empty_usage
 
     try:
-        llm_records = await extract_with_llm(msg, settings)
+        llm_records, llm_usage = await extract_with_llm(msg, settings)
     except ExtractionRejected as exc:
         logger.warning("LLM extraction rejected for message %s: %s", msg.id, exc)
-        return [], extractor_name or "llm_haiku", True
+        return [], extractor_name or "llm_haiku", True, empty_usage
     except Exception:
         logger.exception("LLM extraction failed for message %s", msg.id)
         raise
 
     if llm_records:
-        return llm_records, "llm_haiku", False
-    return [], extractor_name, template_miss
+        return llm_records, "llm_haiku", False, llm_usage
+    if llm_usage.has_usage:
+        return [], extractor_name or "llm_haiku", True, llm_usage
+    return [], extractor_name, template_miss, llm_usage
 
 
 async def process_pending_messages(
@@ -146,6 +151,7 @@ async def process_pending_messages(
     inserted_total = 0
     new_record_ids: list[int] = []
     failures: list[FailedExtraction] = []
+    llm_usage_total = LlmUsageTotals()
 
     async with session_factory() as session:
         pending = (
@@ -170,7 +176,8 @@ async def process_pending_messages(
 
         processed += 1
         try:
-            records, extractor_name, template_miss = await run_cascade(msg, settings)
+            records, extractor_name, template_miss, llm_usage = await run_cascade(msg, settings)
+            llm_usage_total.merge(llm_usage)
         except Exception:
             async with session_factory() as session:
                 db_row = await session.get(RawMessage, row.id)
@@ -239,4 +246,5 @@ async def process_pending_messages(
         inserted_records=inserted_total,
         new_record_ids=new_record_ids,
         failures=failures,
+        llm_usage=llm_usage_total,
     )
