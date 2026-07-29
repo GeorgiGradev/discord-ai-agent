@@ -1,0 +1,50 @@
+[project]
+name = "discord-ai-agent"
+version = "0.1.0"
+description = "Personal Discord AI assistant with Gmail ingestion and grounded memory"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "discord.py>=2.4.0,<3",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "cryptography>=42.0",
+    "python-dotenv>=1.0",
+    "pgvector>=0.3",
+    "imap-tools>=1.0",
+    "apscheduler>=3.10,<4",
+    "icalendar>=6.0",
+    "recurring-ical-events>=3.0",
+    "httpx>=0.27",
+    "selectolax>=0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-m 'not eval'"
+markers = [
+    "eval: evaluation harness (manual; extraction is deterministic, Q&A uses LLM in C2+)",
+]
+
+[tool.assistant.eval]
+extraction_field_f1_min = 0.95
+citation_validity_min = 1.0
+refusal_accuracy_min = 1.0

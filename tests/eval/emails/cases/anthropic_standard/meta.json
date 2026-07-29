@@ -1,0 +1,9 @@
+{
+  "id": "anthropic_standard",
+  "description": "Anthropic Stripe receipt from archived fixture",
+  "sender": "invoice+statements@mail.anthropic.com",
+  "subject": "Your receipt from Anthropic, PBC #2118-1269-0068",
+  "labels": ["Payment"],
+  "body_file": "anthropic_receipt.txt",
+  "body_type": "text"
+}

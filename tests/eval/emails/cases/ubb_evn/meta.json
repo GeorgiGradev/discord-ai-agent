@@ -1,0 +1,7 @@
+{
+  "id": "ubb_evn",
+  "description": "UBB electricity obligation",
+  "sender": "BitoviSmetki@ubb.bg",
+  "labels": ["Payment"],
+  "html": "<html><body><table id=\"TableOblg\"><tr><td>Име на компания</td><td>Абонатен номер</td><td>Описание</td><td>Сума</td></tr><tr><td>ЕВН България</td><td>555001</td><td>ТОК АП.4</td><td>22.40 eur</td></tr></table></body></html>"
+}

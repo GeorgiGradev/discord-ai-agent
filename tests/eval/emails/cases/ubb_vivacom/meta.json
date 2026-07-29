@@ -1,0 +1,9 @@
+{
+  "id": "ubb_vivacom",
+  "description": "UBB Vivacom phone bill from archived fixture",
+  "sender": "BitoviSmetki@ubb.bg",
+  "subject": null,
+  "labels": ["Payment"],
+  "body_file": "ubb_multi.html",
+  "body_type": "html"
+}

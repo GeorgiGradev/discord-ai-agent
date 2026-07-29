@@ -1,0 +1,8 @@
+{
+  "id": "ubb_triple",
+  "description": "UBB email with three utility rows",
+  "sender": "BitoviSmetki@ubb.bg",
+  "subject": null,
+  "labels": ["Payment"],
+  "html": "<html><body><table id=\"TableOblg\"><tr><td>Име на компания</td><td>Абонатен номер</td><td>Описание</td><td>Сума</td></tr><tr><td>ЕВН България</td><td>900123</td><td>ТОК АП.8</td><td>16.68 eur</td></tr><tr><td>А1 България</td><td>700456</td><td>Интернет А1</td><td>10.73 eur</td></tr><tr><td>Виваком</td><td>17834321001</td><td>ТЕЛЕФОН - МАЙКА</td><td>6.13 eur</td></tr></table></body></html>"
+}

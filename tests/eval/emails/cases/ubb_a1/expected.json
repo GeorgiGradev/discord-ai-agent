@@ -1,0 +1,13 @@
+{
+  "extractor": "ubb_bitovi_smetki",
+  "records": [
+    {
+      "record_type": "PENDING_OBLIGATION",
+      "payee": "А1 България",
+      "subscriber_number": "812345",
+      "description": "Интернет А1",
+      "amount_minor": 1599,
+      "currency": "EUR"
+    }
+  ]
+}

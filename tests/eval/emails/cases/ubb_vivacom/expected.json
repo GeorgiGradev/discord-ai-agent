@@ -1,0 +1,15 @@
+{
+  "extractor": "ubb_bitovi_smetki",
+  "records": [
+    {
+      "record_type": "PENDING_OBLIGATION",
+      "payee": "Виваком",
+      "subscriber_number": "16572209001",
+      "description": "ТЕЛ. 0887654321",
+      "amount_minor": 6676,
+      "currency": "EUR",
+      "due_date": null,
+      "payment_status": null
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "ubb_vik_ap8",
+  "description": "UBB single-row ВиК obligation from archived fixture",
+  "sender": "BitoviSmetki@ubb.bg",
+  "subject": null,
+  "labels": ["Payment"],
+  "body_file": "ubb_single.html",
+  "body_type": "html"
+}

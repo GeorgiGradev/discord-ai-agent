@@ -1,0 +1,5 @@
+{
+  "extractor": "anthropic_receipt",
+  "expect_template_miss": true,
+  "records": []
+}

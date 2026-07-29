@@ -1,0 +1,5 @@
+{
+  "extractor": "ubb_bitovi_smetki",
+  "expect_template_miss": true,
+  "records": []
+}

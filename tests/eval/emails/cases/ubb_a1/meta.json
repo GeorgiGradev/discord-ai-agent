@@ -1,0 +1,7 @@
+{
+  "id": "ubb_a1",
+  "description": "UBB A1 internet obligation",
+  "sender": "BitoviSmetki@ubb.bg",
+  "labels": ["Payment"],
+  "html": "<html><body><table id=\"TableOblg\"><tr><td>Име на компания</td><td>Абонатен номер</td><td>Описание</td><td>Сума</td></tr><tr><td>А1 България</td><td>812345</td><td>Интернет А1</td><td>15.99 eur</td></tr></table></body></html>"
+}

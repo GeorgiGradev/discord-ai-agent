@@ -1,0 +1,8 @@
+{
+  "id": "non_payment_newsletter",
+  "description": "DevBG newsletter should not produce payment records",
+  "sender": "newsletter@dev.bg",
+  "subject": "DevBG weekly digest",
+  "labels": ["DevBG"],
+  "text": "Hello,\n\nHere are this week's community events. No invoices attached.\n"
+}

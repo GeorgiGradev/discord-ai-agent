@@ -1,0 +1,9 @@
+Anthropic, PBC  (https://www.anthropic.com/)
+
+Anthropic, PBC
+
+Receipt from Anthropic, PBC €21.60 Paid November 22, 2025 (invoice illustration [https://stripe-images.s3.amazonaws.com/emails/invoices_invoice_illustration.png]) Download invoice (https://example.com/invoice.pdf) Download receipt (https://example.com/receipt.pdf) Receipt number 2118-1269-0068 Invoice number CTOMBG3V-0001 Payment method - 1234
+
+Receipt #2118-1269-0068 Nov 22 – Dec 22, 2025 Claude Pro Qty 1 €18.00 Subtotal €18.00 Total excluding tax €18.00 Tax (20%) €3.60 Total €21.60 Amount paid €21.60 Questions? Visit our support site (https://support.anthropic.com/).
+
+Powered by    stripe logo (https://stripe.com)  |   Learn more about Stripe Billing (https://stripe.com/billing)

@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {"path": "ubb_vik_ap8"},
+    {"path": "ubb_vivacom"},
+    {"path": "ubb_triple"},
+    {"path": "ubb_evn"},
+    {"path": "ubb_a1"},
+    {"path": "anthropic_standard"},
+    {"path": "anthropic_alt_receipt"},
+    {"path": "non_payment_newsletter"},
+    {"path": "ubb_missing_table"},
+    {"path": "anthropic_missing_amount"}
+  ]
+}

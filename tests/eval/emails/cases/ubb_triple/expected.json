@@ -1,0 +1,29 @@
+{
+  "extractor": "ubb_bitovi_smetki",
+  "records": [
+    {
+      "record_type": "PENDING_OBLIGATION",
+      "payee": "ЕВН България",
+      "subscriber_number": "900123",
+      "description": "ТОК АП.8",
+      "amount_minor": 1668,
+      "currency": "EUR"
+    },
+    {
+      "record_type": "PENDING_OBLIGATION",
+      "payee": "А1 България",
+      "subscriber_number": "700456",
+      "description": "Интернет А1",
+      "amount_minor": 1073,
+      "currency": "EUR"
+    },
+    {
+      "record_type": "PENDING_OBLIGATION",
+      "payee": "Виваком",
+      "subscriber_number": "17834321001",
+      "description": "ТЕЛЕФОН - МАЙКА",
+      "amount_minor": 613,
+      "currency": "EUR"
+    }
+  ]
+}

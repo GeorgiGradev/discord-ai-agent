@@ -1,0 +1,13 @@
+{
+  "extractor": "ubb_bitovi_smetki",
+  "records": [
+    {
+      "record_type": "PENDING_OBLIGATION",
+      "payee": "ЕВН България",
+      "subscriber_number": "555001",
+      "description": "ТОК АП.4",
+      "amount_minor": 2240,
+      "currency": "EUR"
+    }
+  ]
+}

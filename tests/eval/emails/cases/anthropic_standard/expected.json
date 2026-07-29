@@ -1,0 +1,14 @@
+{
+  "extractor": "anthropic_receipt",
+  "records": [
+    {
+      "record_type": "RECEIPT",
+      "payee": "Anthropic, PBC",
+      "subscriber_number": "2118-1269-0068",
+      "description": "Claude Pro Qty 1",
+      "amount_minor": 2160,
+      "currency": "EUR",
+      "payment_status": "PAID"
+    }
+  ]
+}

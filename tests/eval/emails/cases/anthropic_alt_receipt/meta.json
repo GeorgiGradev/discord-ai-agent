@@ -1,0 +1,8 @@
+{
+  "id": "anthropic_alt_receipt",
+  "description": "Anthropic receipt with alternate receipt number",
+  "sender": "invoice+statements@mail.anthropic.com",
+  "subject": "Your receipt from Anthropic, PBC #3000-1111-2222",
+  "labels": ["Payment"],
+  "text": "Anthropic, PBC\n\nReceipt from Anthropic, PBC €18.00 Paid January 5, 2026\nReceipt #3000-1111-2222 Jan 5 – Feb 5, 2026 Claude Pro Qty 1 €15.00 Subtotal €15.00 Total excluding tax €15.00 Tax (20%) €3.00 Total €18.00 Amount paid €18.00\n"
+}

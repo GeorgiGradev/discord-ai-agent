@@ -1,0 +1,8 @@
+{
+  "id": "ubb_missing_table",
+  "description": "UBB sender but HTML without obligation table",
+  "sender": "BitoviSmetki@ubb.bg",
+  "subject": "Notification",
+  "labels": ["Payment"],
+  "html": "<html><body><p>Уведомление без таблица със задължения.</p></body></html>"
+}

@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.log
+.idea/
+.vscode/
+.cursor/
+postgres_data/
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store

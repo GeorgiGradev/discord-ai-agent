@@ -1,0 +1,15 @@
+{
+  "extractor": "ubb_bitovi_smetki",
+  "records": [
+    {
+      "record_type": "PENDING_OBLIGATION",
+      "payee": "ВиК Хасково",
+      "subscriber_number": "145741",
+      "description": "ВИК АП.8",
+      "amount_minor": 848,
+      "currency": "EUR",
+      "due_date": null,
+      "payment_status": null
+    }
+  ]
+}

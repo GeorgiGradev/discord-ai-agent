@@ -1,0 +1,39 @@
+# Grounded Q&A evaluation set — wired in C2 (memory + agent).
+# Structure:
+#   - answerable: question has supporting data in payment_records / calendar / memory
+#   - unanswerable: must refuse (no hallucinated facts)
+#
+# Threshold (pyproject.toml): refusal_accuracy_min = 1.0 for unanswerable cases.
+
+version: 1
+
+questions:
+  - id: qa_vik_amount
+    category: answerable
+    question: "Колко е задължението към ВиК Хасково за АП.8?"
+    expected_facts:
+      - "8.48 EUR"
+    expected_refs:
+      - payment_record
+
+  - id: qa_anthropic_receipt
+    category: answerable
+    question: "Колко платих на Anthropic за Claude Pro?"
+    expected_facts:
+      - "21.60 EUR"
+    expected_refs:
+      - payment_record
+
+  - id: qa_unknown_neighbor
+    category: unanswerable
+    question: "Колко дължа на съседа за ток?"
+    expected_refusal: true
+    refusal_phrases:
+      - "нямам записана информация"
+
+  - id: qa_unknown_stock
+    category: unanswerable
+    question: "Колко струва акцията на Apple днес?"
+    expected_refusal: true
+    refusal_phrases:
+      - "нямам записана информация"

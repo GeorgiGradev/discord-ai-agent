@@ -1,0 +1,8 @@
+{
+  "id": "anthropic_missing_amount",
+  "description": "Anthropic sender but body without amount paid line",
+  "sender": "invoice+statements@mail.anthropic.com",
+  "subject": "Your receipt from Anthropic, PBC #9999-0000-0001",
+  "labels": ["Payment"],
+  "text": "Anthropic, PBC\n\nThanks for subscribing to Claude Pro.\nReceipt #9999-0000-0001\n"
+}
