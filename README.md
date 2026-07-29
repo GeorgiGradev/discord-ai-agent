@@ -1,12 +1,12 @@
-# Anabella - Discord AI Assistant
+# Anabella — Discord AI Assistant
 
-Personal Discord AI bot that ingests **Gmail accounts** (IMAP), syncs **Google Calendar** (secret iCal URL), and posts **verified payment extractions** to private Discord channels with **deterministic parsers first**, LLM fallback later, and an eval harness to measure hallucination risk.
+Personal Discord bot that ingests **two Gmail accounts** (IMAP), syncs **Google Calendar** (secret iCal URL), and posts **verified payment extractions** to private Discord channels - with **deterministic parsers first**, LLM fallback later, and an eval harness to measure hallucination risk.
 
 > Read-only by design: no outbound email, no payments, no calendar writes.
 
 ## Why this project
 
-Most “AI assistants” over email fail silently - wrong amounts, invented due dates, confident nonsense. Anabella inverts that:
+Most “AI assistants” over email fail silently — wrong amounts, invented due dates, confident nonsense. Anabella inverts that:
 
 1. **Gmail labels + sender routing** decide the pipeline (zero LLM cost).
 2. **Template extractors** parse recurring bill formats (UBB utility table, Anthropic receipts).
@@ -35,7 +35,8 @@ Google Calendar (ICS) ──► calendar_events ──► Discord #general
 | Calendar ICS sync (ETag, RRULE expansion) | ✅ |
 | Payment extraction (UBB, Anthropic templates) | ✅ |
 | Eval harness (`tests/eval/`) | ✅ |
-| LLM fallback extraction | 🔜 B4 |
+| LLM fallback extraction (Haiku + verbatim validation) | ✅ |
+| Conference/career events → `#events` | 🔜 B5 |
 | Grounded chat + memory | 🔜 C1–C3 |
 
 ## Quick start (local)
@@ -93,13 +94,15 @@ tests/
 ## Security
 
 - **Do not commit `.env`** — it contains bot token, Gmail app passwords, calendar secret URLs, and Fernet key.
-- Copy `.env.example` only.
+- Copy `.env.example` only; fill `POSTGRES_PASSWORD` and build `DATABASE_URL` locally.
+- **`docker-compose.yml` has no embedded passwords** — Postgres credentials live only in `.env`.
 - Email fixtures are **anonymized** (synthetic names, redacted Stripe links).
 - Bot uses a **Discord user ID allowlist** — only configured users can run commands.
 
+If GitGuardian flags old commits: early versions had local dev defaults like `assistant:assistant` in compose — not production secrets. After the fix, mark the incident resolved in GitGuardian; no rotation needed unless a real token was committed (`.env` was never in git).
+
 ## Roadmap
 
-- **B4** — Haiku extraction fallback with verbatim validation
 - **B5** — Conference/career events → `#events`
 - **C1–C3** — Vector memory, grounded Q&A, evening journal
 
