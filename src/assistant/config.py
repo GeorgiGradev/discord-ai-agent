@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     )
     citation_max_retries: int = Field(default=1, alias="CITATION_MAX_RETRIES")
     llm_extraction_enabled: bool = Field(default=True, alias="LLM_EXTRACTION_ENABLED")
+    event_extraction_batch_size: int = Field(default=5, alias="EVENT_EXTRACTION_BATCH_SIZE")
 
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     anthropic_model_haiku: str = Field(

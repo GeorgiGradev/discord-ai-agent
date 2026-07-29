@@ -101,6 +101,9 @@ class RawMessage(Base):
     extraction_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="pending"
     )
+    event_extraction_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -132,6 +135,69 @@ class PaymentRecord(Base):
     due_date: Mapped[date | None] = mapped_column(nullable=True)
     payment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     period_month: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    evidence_quote: Mapped[str] = mapped_column(Text, nullable=False)
+    extractor_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ConferenceEvent(Base):
+    __tablename__ = "conference_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "name_normalized",
+            "starts_on",
+            "location_normalized",
+            name="uq_conference_dedup",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    raw_message_id: Mapped[int] = mapped_column(ForeignKey("raw_messages.id"), nullable=False)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(512), nullable=False)
+    name_normalized: Mapped[str] = mapped_column(String(512), nullable=False)
+    starts_on: Mapped[date | None] = mapped_column(nullable=True)
+    ends_on: Mapped[date | None] = mapped_column(nullable=True)
+    location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    location_normalized: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    attendance_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    price_raw: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    price_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    registration_deadline: Mapped[date | None] = mapped_column(nullable=True)
+    cfp_deadline: Mapped[date | None] = mapped_column(nullable=True)
+    evidence_quote: Mapped[str] = mapped_column(Text, nullable=False)
+    extractor_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CareerEvent(Base):
+    __tablename__ = "career_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_normalized",
+            "position_normalized",
+            "event_type",
+            "deadline",
+            name="uq_career_dedup",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    raw_message_id: Mapped[int] = mapped_column(ForeignKey("raw_messages.id"), nullable=False)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    company: Mapped[str] = mapped_column(String(255), nullable=False)
+    company_normalized: Mapped[str] = mapped_column(String(255), nullable=False)
+    position: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    position_normalized: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    event_date: Mapped[date | None] = mapped_column(nullable=True)
+    deadline: Mapped[date | None] = mapped_column(nullable=True)
+    next_step: Mapped[str | None] = mapped_column(Text, nullable=True)
     evidence_quote: Mapped[str] = mapped_column(Text, nullable=False)
     extractor_name: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

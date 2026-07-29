@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from imap_tools import AND, OR, A, MailBox, U
+from imap_tools import AND, OR, A, MailBox, MailMessage, U
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -18,8 +18,14 @@ from assistant.ingest.accounts import ALL_MAIL_FOLDER
 from assistant.ingest.mime import (
     extract_email_address,
     header_value,
+    merge_gmail_labels,
+    parse_gmail_fetch_metadata,
     parse_gmail_labels,
     resolve_message_identity,
+)
+
+GMAIL_FETCH_PARTS = (
+    "(BODY.PEEK[] UID FLAGS RFC822.SIZE X-GM-LABELS X-GM-MSGID X-GM-THRID)"
 )
 
 logger = logging.getLogger(__name__)
@@ -59,17 +65,23 @@ def _label_criteria(labels: list[str], since: date) -> AND | OR:
     return AND(label_filters, A(sent_date_gte=since))
 
 
-def _to_fetched_message(msg, uidvalidity: int) -> FetchedMessage | None:
-    labels = parse_gmail_labels(msg.headers)
+def _to_fetched_message(msg: MailMessage, uidvalidity: int) -> FetchedMessage | None:
+    metadata = parse_gmail_fetch_metadata(list(msg._raw_flag_data) + [msg._raw_uid_data])
+    labels = merge_gmail_labels(metadata.labels, parse_gmail_labels(msg.headers))
     received_at = msg.date
     if received_at and received_at.tzinfo is None:
         received_at = received_at.replace(tzinfo=UTC)
 
+    thread_id = metadata.gm_thrid or header_value(msg.headers, "X-GM-THRID")
+
     return FetchedMessage(
         gm_msgid=resolve_message_identity(
-            msg.headers, uid=int(msg.uid), uidvalidity=uidvalidity
+            msg.headers,
+            uid=int(msg.uid),
+            uidvalidity=uidvalidity,
+            gm_msgid=metadata.gm_msgid,
         ),
-        thread_id=header_value(msg.headers, "X-GM-THRID"),
+        thread_id=thread_id,
         sender=extract_email_address(msg.from_),
         subject=msg.subject,
         labels=labels,
@@ -80,24 +92,48 @@ def _to_fetched_message(msg, uidvalidity: int) -> FetchedMessage | None:
     )
 
 
+def _fetch_uids(mailbox: MailBox, criteria, *, bulk: bool = True) -> list[FetchedMessage]:
+    """Fetch messages with Gmail label/msgid metadata."""
+    uids = list(mailbox.uids(criteria))
+    fetched: list[FetchedMessage] = []
+    uidvalidity = int(mailbox.folder.status(None)["UIDVALIDITY"])
+
+    if bulk:
+        batch_size = 50
+        for start in range(0, len(uids), batch_size):
+            batch = uids[start : start + batch_size]
+            fetch_result = mailbox.client.uid("fetch", ",".join(batch), GMAIL_FETCH_PARTS)
+            if not fetch_result[1]:
+                continue
+            for index in range(0, len(fetch_result[1]), 2):
+                if index + 1 >= len(fetch_result[1]):
+                    break
+                fetch_item = [fetch_result[1][index], fetch_result[1][index + 1]]
+                if fetch_item[1] is None:
+                    continue
+                msg = MailMessage(fetch_item)
+                parsed = _to_fetched_message(msg, uidvalidity)
+                if parsed is not None:
+                    fetched.append(parsed)
+    else:
+        for uid in uids:
+            fetch_result = mailbox.client.uid("fetch", uid, GMAIL_FETCH_PARTS)
+            if not fetch_result[1] or fetch_result[1][0] is None:
+                continue
+            msg = MailMessage(fetch_result[1])
+            parsed = _to_fetched_message(msg, uidvalidity)
+            if parsed is not None:
+                fetched.append(parsed)
+
+    return fetched
+
+
 def _fetch_backfill(
     mailbox: MailBox, labels: list[str], since: date, uidvalidity: int
 ) -> tuple[list[FetchedMessage], int]:
     criteria = _label_criteria(labels, since)
-    seen_uids: set[int] = set()
-    fetched: list[FetchedMessage] = []
-    max_uid = 0
-
-    for msg in mailbox.fetch(criteria, mark_seen=False, bulk=True):
-        uid = int(msg.uid)
-        max_uid = max(max_uid, uid)
-        if uid in seen_uids:
-            continue
-        seen_uids.add(uid)
-        parsed = _to_fetched_message(msg, uidvalidity)
-        if parsed is not None:
-            fetched.append(parsed)
-
+    fetched = _fetch_uids(mailbox, criteria)
+    max_uid = max((message.uid for message in fetched), default=0)
     return fetched, max_uid
 
 
@@ -108,16 +144,8 @@ def _fetch_incremental(
         OR(*[A(gmail_label=label) for label in labels]),
         A(uid=U(str(last_uid + 1), "*")),
     )
-    fetched: list[FetchedMessage] = []
-    max_uid = last_uid
-
-    for msg in mailbox.fetch(criteria, mark_seen=False, bulk=True):
-        uid = int(msg.uid)
-        max_uid = max(max_uid, uid)
-        parsed = _to_fetched_message(msg, uidvalidity)
-        if parsed is not None:
-            fetched.append(parsed)
-
+    fetched = _fetch_uids(mailbox, criteria)
+    max_uid = max((message.uid for message in fetched), default=last_uid)
     return fetched, max_uid
 
 

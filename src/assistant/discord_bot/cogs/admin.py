@@ -8,11 +8,11 @@ from discord import app_commands
 from discord.ext import commands
 
 from assistant.config import Settings
-from assistant.scheduler.jobs import extraction_job, ics_sync_job, imap_sync_job
+from assistant.scheduler.jobs import event_extraction_job, extraction_job, ics_sync_job, imap_sync_job
 
 logger = logging.getLogger(__name__)
 
-SYNC_TARGETS = {"imap", "calendar", "extract", "all"}
+SYNC_TARGETS = {"imap", "calendar", "extract", "events", "all"}
 
 
 class AdminCog(commands.Cog):
@@ -39,10 +39,11 @@ class AdminCog(commands.Cog):
     @app_commands.describe(target="Какво да синхронизирам")
     @app_commands.choices(
         target=[
-            app_commands.Choice(name="all (imap + calendar + extract)", value="all"),
-            app_commands.Choice(name="imap (email + extract)", value="imap"),
+            app_commands.Choice(name="all (imap + calendar + extract + events)", value="all"),
+            app_commands.Choice(name="imap (email + extract + events)", value="imap"),
             app_commands.Choice(name="calendar", value="calendar"),
-            app_commands.Choice(name="extract (payments only)", value="extract"),
+            app_commands.Choice(name="extract (payments + events)", value="extract"),
+            app_commands.Choice(name="events (DevBG/Udemy/LocalAGI only)", value="events"),
         ]
     )
     async def sync(self, interaction: discord.Interaction, target: app_commands.Choice[str]) -> None:
@@ -54,12 +55,22 @@ class AdminCog(commands.Cog):
             return
         if target_value not in SYNC_TARGETS:
             await interaction.response.send_message(
-                "Невалидна цел. Ползвай: imap, calendar, extract, all.",
+                "Невалидна цел. Ползвай: imap, calendar, extract, events, all.",
                 ephemeral=True,
             )
             return
+        if interaction.channel_id is None:
+            await interaction.response.send_message(
+                "Не мога да определя канала за отговор.", ephemeral=True
+            )
+            return
 
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        reply_channel_id = interaction.channel_id
+        post_in_channel = target_value == "events"
+        await interaction.response.defer(
+            ephemeral=not post_in_channel,
+            thinking=True,
+        )
 
         async def run_sync() -> None:
             secret_box = self.bot.secret_box  # type: ignore[attr-defined]
@@ -68,22 +79,28 @@ class AdminCog(commands.Cog):
                     await imap_sync_job(self.bot, self.settings, secret_box)
                 elif target_value == "extract":
                     await extraction_job(self.bot, self.settings)
+                elif target_value == "events":
+                    await event_extraction_job(
+                        self.bot,
+                        self.settings,
+                        reply_channel_id=reply_channel_id,
+                        interaction=interaction,
+                    )
                 if target_value in {"calendar", "all"}:
                     await ics_sync_job(self.bot, self.settings, secret_box)
 
-                channels = ["#general"]
-                if target_value in {"imap", "extract", "all"}:
-                    channels.append("#payments")
-                await interaction.followup.send(
-                    f"Sync завърши (`{target_value}`). Виж {', '.join(channels)}.",
-                    ephemeral=True,
-                )
+                if not post_in_channel:
+                    await interaction.followup.send(
+                        f"Sync завърши (`{target_value}`).",
+                        ephemeral=True,
+                    )
             except Exception:
                 logger.exception("Manual /sync failed for target=%s", target_value)
-                await interaction.followup.send(
-                    f"Sync (`{target_value}`) се провали — виж логовете на бота.",
-                    ephemeral=True,
-                )
+                error_text = f"Sync (`{target_value}`) се провали — виж логовете на бота."
+                if post_in_channel:
+                    await interaction.edit_original_response(content=error_text)
+                else:
+                    await interaction.followup.send(error_text, ephemeral=True)
 
         asyncio.create_task(run_sync())
 

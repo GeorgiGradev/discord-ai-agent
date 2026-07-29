@@ -1,6 +1,6 @@
 # Anabella - Discord AI Assistant
 
-Personal Discord bot that ingests **Gmail accounts** (IMAP), syncs **Google Calendar** (secret iCal URL), and posts **verified payment extractions** to private Discord channels - **deterministic parsers first**, **Haiku LLM fallback** when templates miss, plus an **eval harness** to measure hallucination risk.
+Personal Discord bot that ingests **Gmail accounts** (IMAP), syncs **Google Calendar** (secret iCal URL), and posts **verified payment extractions** to `#payments` and **conference/career events** to `#events` — **deterministic parsers first**, **Haiku LLM fallback** when templates miss, plus an **eval harness** to measure hallucination risk.
 
 > Read-only by design: no outbound email, no payments, no calendar writes.
 
@@ -30,6 +30,12 @@ When templates miss, Haiku extracts with verbatim validation; batch cost posted 
 
 ![LLM extraction and cost report](docs/screenshots/payments-llm-cost.png)
 
+### Event extraction → `#events` (Haiku, B5)
+
+DevBG / Udemy / LocalAGI emails → conference & career records with verbatim quotes, cost report, and slash-command reply in-channel.
+
+![Event extraction in #events](docs/screenshots/events-extraction.png)
+
 ## Why this project
 
 Most “AI assistants” over email fail silently — wrong amounts, invented due dates, confident nonsense. Anabella inverts that:
@@ -52,29 +58,36 @@ Gmail (IMAP) ──► raw_messages (Postgres)
                       ▼                    └── token usage → cost estimate
               payment_records ──► Discord #payments
 
+              event extraction (DevBG/Udemy/LocalAGI; manual /sync events)
+              Haiku + citation validation
+                      │
+                      ▼
+         conference_events / career_events ──► Discord #events
+
 Google Calendar (ICS) ──► calendar_events ──► Discord #general
 ```
 
-| Layer | Status |
-|-------|--------|
-| Postgres 17 + pgvector, Alembic | ✅ |
-| Multi-account IMAP sync (UID cursor, X-GM-MSGID) | ✅ |
-| Calendar ICS sync (ETag, RRULE expansion) | ✅ |
-| Payment extraction — UBB & Anthropic templates | ✅ |
-| Eval harness (`tests/eval/`) | ✅ |
-| LLM fallback — Haiku + verbatim validation | ✅ |
-| LLM cost report in `#payments` after each batch | ✅ |
-| Conference/career events → `#events` | 🔜 B5 |
-| Grounded chat + memory (Sonnet + embeddings) | 🔜 C1–C3 |
+| Layer                                               | Status   |
+| --------------------------------------------------- | -------- |
+| Postgres 17 + pgvector, Alembic                     | ✅       |
+| Multi-account IMAP sync (UID cursor, X-GM-MSGID)    | ✅       |
+| Calendar ICS sync (ETag, RRULE expansion)           | ✅       |
+| Payment extraction — UBB & Anthropic templates      | ✅       |
+| Eval harness (`tests/eval/`)                        | ✅       |
+| LLM fallback — Haiku + verbatim validation          | ✅       |
+| LLM cost report in `#payments` after each batch     | ✅       |
+| Conference/career events → `#events` (B5)           | ✅       |
+| Event citation validation (DevBG-tolerant matching) | ✅       |
+| Grounded chat + memory (Sonnet + embeddings)        | 🔜 C1–C3 |
 
 ## Extraction cascade
 
-| Step | When | Cost |
-|------|------|------|
-| **JSON-LD** | Invoice markup in email | $0 |
-| **Templates** | Known senders (UBB, Anthropic receipt format) | $0 |
-| **Haiku** | Template matched but failed, or unknown payment email | ~$0.002/email |
-| **Failed** | LLM rejected (bad quote) → alert in `#payments` | billed tokens still counted |
+| Step          | When                                                  | Cost                        |
+| ------------- | ----------------------------------------------------- | --------------------------- |
+| **JSON-LD**   | Invoice markup in email                               | $0                          |
+| **Templates** | Known senders (UBB, Anthropic receipt format)         | $0                          |
+| **Haiku**     | Template matched but failed, or unknown payment email | ~$0.002/email               |
+| **Failed**    | LLM rejected (bad quote) → alert in `#payments`       | billed tokens still counted |
 
 After each extraction batch that used Haiku, `#payments` gets a summary like:
 
@@ -85,6 +98,41 @@ LLM разход (Haiku): $0.0052
 ```
 
 Estimate uses Anthropic list pricing ($1/M input, $5/M output for Haiku 4.5). **Anthropic console** on the `Anabella` API key is the source of truth for billing.
+
+## Event extraction (B5)
+
+Emails with Gmail labels **`DevBG`**, **`Udemy`**, or **`LocalAGI`** (plus sender hints like `@dev.bg`) run through a separate Haiku pipeline:
+
+| Schema         | Fields                                                                     |
+| -------------- | -------------------------------------------------------------------------- |
+| **Conference** | name, dates, location, online/in-person, price, registration/CFP deadlines |
+| **Career**     | type, company, position, dates, deadline, next step                        |
+
+Each record requires an **`evidence_quote`** grounded in the email body. Generic newsletters with no concrete events return empty (no Discord noise).
+
+**Citation validation** checks quotes against the same text Haiku sees (`message_body_for_llm`), with tolerant matching for real DevBG quirks:
+
+- `\r\n` vs `\n`, collapsed whitespace
+- tracking URLs `[https://…]` skipped in body
+- Cyrillic/Latin homoglyphs (`Оnline` / `Online`)
+- optional space before year (`One 2026` / `One2026`)
+- minor name typos (fuzzy token match, ≥88% similarity)
+
+If `price_raw` appears in the body but not inside the quote, the price is dropped and the event is still saved.
+
+**Operational notes:**
+
+- Event extraction does **not** run on IMAP startup — use **`/sync events`** (or `/sync extract` / `/sync all`).
+- **`/sync events`** posts results in the **channel where you run the command** (replaces the “thinking…” defer message).
+- Default batch: **5 newest** pending candidates per run (`EVENT_EXTRACTION_BATCH_SIZE=5`).
+- LLM cost is reported in the same reply, like `#payments`.
+
+```powershell
+/sync events          # event extraction only → reply in current channel
+/sync extract         # payments + events
+/sync imap            # IMAP + payment extraction (not events)
+/sync all             # IMAP + calendar + payments + events
+```
 
 ## Quick start (local)
 
@@ -114,26 +162,27 @@ python -m assistant.main
 
 ### Required `.env` keys (minimum)
 
-| Key | Purpose |
-|-----|---------|
-| `DISCORD_*` | Bot token, guild, channels, your user ID |
-| `FERNET_KEY` | Encrypt Gmail passwords & ICS URLs in DB |
-| `ACCOUNT_*` | Two Gmail IMAP accounts + labels |
-| `DATABASE_URL` | Postgres (local: `@localhost:5432`) |
-| `ANTHROPIC_API_KEY` | Haiku fallback extraction |
+| Key                      | Purpose                                             |
+| ------------------------ | --------------------------------------------------- |
+| `DISCORD_*`              | Bot token, guild, channels, your user ID            |
+| `FERNET_KEY`             | Encrypt Gmail passwords & ICS URLs in DB            |
+| `ACCOUNT_*`              | Two Gmail IMAP accounts + labels                    |
+| `DATABASE_URL`           | Postgres (local: `@localhost:5432`)                 |
+| `ANTHROPIC_API_KEY`      | Haiku fallback extraction                           |
 | `LLM_EXTRACTION_ENABLED` | `true` / `false` — disable LLM without removing key |
 
 `OPENAI_API_KEY` is **not needed yet** (C1 embeddings). Sonnet is for C2 chat.
 
 ### Discord commands
 
-| Command | Action |
-|---------|--------|
-| `/ping` | Health check |
-| `/sync` → `imap` | Email sync + extraction |
-| `/sync` → `calendar` | ICS sync |
-| `/sync` → `extract` | Re-run payment extraction on pending mail |
-| `/sync` → `all` | IMAP + calendar |
+| Command              | Action                                           |
+| -------------------- | ------------------------------------------------ |
+| `/ping`              | Health check                                     |
+| `/sync` → `imap`     | Email sync + payment extraction                  |
+| `/sync` → `calendar` | ICS sync                                         |
+| `/sync` → `extract`  | Re-run payment + event extraction                |
+| `/sync` → `events`   | Event extraction only (reply in current channel) |
+| `/sync` → `all`      | IMAP + calendar + payments + events              |
 
 ### How it works without VPS deploy
 
@@ -152,14 +201,18 @@ Eval thresholds: `pyproject.toml` → `[tool.assistant.eval]`.
 
 ```
 src/assistant/
-  ingest/              IMAP sync, ICS sync, MIME parsing
+  ingest/              IMAP sync (Gmail X-GM-LABELS), ICS sync, MIME parsing
   extraction/
     templates/         UBB, Anthropic (deterministic)
-    llm_fallback.py    Haiku structured extraction
+    events/            conference/career Haiku pipeline (B5)
+    citations.py       evidence quote matching (tolerant DevBG rules)
+    llm_fallback.py    Haiku structured extraction (payments)
     llm_cost.py        token usage + USD estimate
-    pipeline.py        cascade orchestration
-  discord_bot/         client, slash commands
-  scheduler/           periodic sync + #payments notify
+    pipeline.py        payment cascade orchestration
+  discord_bot/         client, slash commands, #events formatting
+  scheduler/           periodic sync + Discord notify
+docs/
+  screenshots/         README screenshots (incl. events-extraction.png)
 scripts/
   verify_anthropic.py  one-shot API key check
 tests/
@@ -180,7 +233,6 @@ If GitGuardian flags old commits with `assistant:assistant` in compose — those
 
 ## Roadmap
 
-- **B5** — Conference/career events → `#events`
 - **C1** — Vector memory (OpenAI embeddings)
 - **C2** — Grounded Q&A in `#chat` (Sonnet)
 - **C3** — Evening journal

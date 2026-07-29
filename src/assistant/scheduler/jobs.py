@@ -14,9 +14,18 @@ from assistant.crypto import SecretBox
 from assistant.db.session import get_session_factory
 from assistant.ingest.accounts import bootstrap_accounts
 from assistant.discord_bot.formatting import (
+    format_event_extraction_failure,
+    format_event_extraction_summary,
+    format_career_event,
+    format_conference_event,
     format_extraction_failure,
     format_extraction_summary,
     format_payment_record,
+)
+from assistant.db.models import RawMessage
+from assistant.extraction.events.pipeline import (
+    _event_candidate_sql_filter,
+    process_pending_event_messages,
 )
 from assistant.extraction.llm_cost import format_llm_usage_summary
 from assistant.extraction.pipeline import process_pending_messages
@@ -153,6 +162,28 @@ async def _notify_channel(
             logger.exception("Failed to post message to %s channel", log_label)
 
 
+async def _deliver_discord_messages(
+    bot: commands.Bot,
+    chunks: list[str],
+    *,
+    channel_id: int | None = None,
+    interaction: discord.Interaction | None = None,
+    log_label: str = "channel",
+) -> None:
+    if not chunks:
+        return
+    if interaction is not None:
+        try:
+            await interaction.edit_original_response(content=chunks[0])
+            for chunk in chunks[1:]:
+                await interaction.followup.send(chunk)
+            return
+        except discord.DiscordException:
+            logger.exception("Failed to deliver via interaction; falling back to channel")
+    if channel_id is not None:
+        await _notify_channel(bot, channel_id, chunks, log_label=log_label)
+
+
 async def _notify_general(bot: commands.Bot, settings: Settings, messages: list[str]) -> None:
     await _notify_channel(
         bot, settings.discord_channel_general, messages, log_label="#general"
@@ -162,6 +193,12 @@ async def _notify_general(bot: commands.Bot, settings: Settings, messages: list[
 async def _notify_payments(bot: commands.Bot, settings: Settings, messages: list[str]) -> None:
     await _notify_channel(
         bot, settings.discord_channel_payments, messages, log_label="#payments"
+    )
+
+
+async def _notify_events(bot: commands.Bot, settings: Settings, messages: list[str]) -> None:
+    await _notify_channel(
+        bot, settings.discord_channel_events, messages, log_label="#events"
     )
 
 
@@ -226,15 +263,180 @@ async def run_extraction(bot: commands.Bot, settings: Settings) -> None:
         await _notify_payments(bot, settings, _chunk_discord_messages(messages, fallback="**Extraction**"))
 
 
+async def run_event_extraction(
+    bot: commands.Bot,
+    settings: Settings,
+    *,
+    reply_channel_id: int | None = None,
+    interaction: discord.Interaction | None = None,
+) -> None:
+    session_factory = get_session_factory()
+    if session_factory is None:
+        logger.error("Session factory not initialized")
+        return
+
+    from sqlalchemy import select
+
+    from assistant.db.models import CareerEvent, ConferenceEvent
+
+    logger.info("Event extraction starting")
+    result = await process_pending_event_messages(session_factory, settings)
+    logger.info(
+        "Event extraction done: processed=%d extracted=%d conf=%d career=%d "
+        "no_match=%d failed=%d skipped=%d",
+        result.processed,
+        result.extracted,
+        result.inserted_conference,
+        result.inserted_career,
+        result.no_match,
+        result.failed,
+        result.skipped,
+    )
+
+    messages: list[str] = []
+    if (
+        result.processed
+        or result.no_match
+        or result.failed
+        or result.skipped
+        or result.llm_usage.has_usage
+    ):
+        messages.append(
+            format_event_extraction_summary(
+                processed=result.processed,
+                extracted=result.extracted,
+                skipped=result.skipped,
+                no_match=result.no_match,
+                failed=result.failed,
+                inserted_conference=result.inserted_conference,
+                inserted_career=result.inserted_career,
+            )
+        )
+
+    if result.llm_usage.has_usage:
+        messages.append(format_llm_usage_summary(result.llm_usage))
+
+    if result.new_conference_ids:
+        async with session_factory() as session:
+            records = (
+                await session.scalars(
+                    select(ConferenceEvent)
+                    .where(ConferenceEvent.id.in_(result.new_conference_ids))
+                    .order_by(ConferenceEvent.id.asc())
+                )
+            ).all()
+        for record in records:
+            messages.append(format_conference_event(record))
+
+    if result.new_career_ids:
+        async with session_factory() as session:
+            records = (
+                await session.scalars(
+                    select(CareerEvent)
+                    .where(CareerEvent.id.in_(result.new_career_ids))
+                    .order_by(CareerEvent.id.asc())
+                )
+            ).all()
+        for record in records:
+            messages.append(format_career_event(record))
+
+    if result.failures:
+        for failure in result.failures[:5]:
+            messages.append(format_event_extraction_failure(failure))
+        remaining = len(result.failures) - 5
+        if remaining > 0:
+            messages.append(f"_… и още **{remaining}** неуспешни извличания_")
+
+    target_channel = reply_channel_id or settings.discord_channel_events
+    log_label = "sync-reply" if (reply_channel_id or interaction) else "#events"
+
+    if messages:
+        await _deliver_discord_messages(
+            bot,
+            _chunk_discord_messages(messages, fallback="**Event extraction**"),
+            channel_id=target_channel,
+            interaction=interaction,
+            log_label=log_label,
+        )
+    elif reply_channel_id is not None or interaction is not None:
+        status_lines = await _format_event_candidate_status(session_factory)
+        await _deliver_discord_messages(
+            bot,
+            [
+                "📋 **Event extraction завърши**\n"
+                "Няма pending event имейли за обработка.\n"
+                + status_lines
+            ],
+            channel_id=target_channel,
+            interaction=interaction,
+            log_label=log_label,
+        )
+
+
+async def _format_event_candidate_status(session_factory) -> str:
+    from sqlalchemy import func, select
+
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                select(RawMessage.event_extraction_status, func.count())
+                .where(_event_candidate_sql_filter())
+                .group_by(RawMessage.event_extraction_status)
+            )
+        ).all()
+    if not rows:
+        return "_Няма event candidates в базата._"
+    parts = [f"{status}: **{count}**" for status, count in sorted(rows, key=lambda r: r[0])]
+    return "Статуси: " + " · ".join(parts)
+
+
 async def extraction_job(bot: commands.Bot, settings: Settings) -> None:
     try:
         await run_extraction(bot, settings)
+        await run_event_extraction(bot, settings)
     except Exception:
         logger.exception("Extraction job failed")
         await _notify_payments(
             bot,
             settings,
             ["**Extraction:** неочаквана грешка — виж логовете на сървъра."],
+        )
+        await _notify_events(
+            bot,
+            settings,
+            ["**Event extraction:** неочаквана грешка — виж логовете на сървъра."],
+        )
+
+
+async def event_extraction_job(
+    bot: commands.Bot,
+    settings: Settings,
+    *,
+    reply_channel_id: int | None = None,
+    interaction: discord.Interaction | None = None,
+) -> None:
+    try:
+        await run_event_extraction(
+            bot,
+            settings,
+            reply_channel_id=reply_channel_id,
+            interaction=interaction,
+        )
+    except Exception:
+        logger.exception("Event extraction job failed")
+        target = reply_channel_id or settings.discord_channel_events
+        error_message = "❌ **Event extraction:** неочаквана грешка — виж логовете на бота."
+        if interaction is not None:
+            try:
+                await interaction.edit_original_response(content=error_message)
+                return
+            except discord.DiscordException:
+                logger.exception("Failed to deliver event extraction error via interaction")
+        await _notify_channel(
+            bot,
+            target,
+            [error_message],
+            log_label="sync-reply" if reply_channel_id else "#events",
         )
 
 
