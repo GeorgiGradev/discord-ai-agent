@@ -202,27 +202,13 @@ async def _notify_events(bot: commands.Bot, settings: Settings, messages: list[s
     )
 
 
-async def run_extraction(bot: commands.Bot, settings: Settings) -> None:
-    session_factory = get_session_factory()
-    if session_factory is None:
-        logger.error("Session factory not initialized")
-        return
-
+async def _build_payment_extraction_messages(
+    session_factory,
+    result,
+) -> list[str]:
     from sqlalchemy import select
 
     from assistant.db.models import PaymentRecord
-
-    logger.info("Extraction starting")
-    result = await process_pending_messages(session_factory, settings)
-    logger.info(
-        "Extraction done: processed=%d extracted=%d inserted=%d no_match=%d failed=%d skipped=%d",
-        result.processed,
-        result.extracted,
-        result.inserted_records,
-        result.no_match,
-        result.failed,
-        result.skipped,
-    )
 
     messages: list[str] = []
     if result.processed or result.no_match or result.failed or result.llm_usage.has_usage:
@@ -258,40 +244,85 @@ async def run_extraction(bot: commands.Bot, settings: Settings) -> None:
         remaining = len(result.failures) - 5
         if remaining > 0:
             messages.append(f"_… и още **{remaining}** неуспешни извличания_")
-
-    if messages:
-        await _notify_payments(bot, settings, _chunk_discord_messages(messages, fallback="**Extraction**"))
+    return messages
 
 
-async def run_event_extraction(
+async def _format_payment_candidate_status(session_factory) -> str:
+    from sqlalchemy import func, select
+
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                select(RawMessage.extraction_status, func.count())
+                .where(RawMessage.extraction_status.is_not(None))
+                .group_by(RawMessage.extraction_status)
+            )
+        ).all()
+    if not rows:
+        return "_Няма payment candidates в базата._"
+    parts = [f"{status}: **{count}**" for status, count in sorted(rows, key=lambda r: r[0])]
+    return "Статуси: " + " · ".join(parts)
+
+
+async def run_extraction(
     bot: commands.Bot,
     settings: Settings,
     *,
     reply_channel_id: int | None = None,
     interaction: discord.Interaction | None = None,
-) -> None:
+    deliver: bool = True,
+) -> list[str]:
     session_factory = get_session_factory()
     if session_factory is None:
         logger.error("Session factory not initialized")
-        return
+        return []
 
-    from sqlalchemy import select
-
-    from assistant.db.models import CareerEvent, ConferenceEvent
-
-    logger.info("Event extraction starting")
-    result = await process_pending_event_messages(session_factory, settings)
+    logger.info("Extraction starting")
+    result = await process_pending_messages(session_factory, settings)
     logger.info(
-        "Event extraction done: processed=%d extracted=%d conf=%d career=%d "
-        "no_match=%d failed=%d skipped=%d",
+        "Extraction done: processed=%d extracted=%d inserted=%d no_match=%d failed=%d skipped=%d",
         result.processed,
         result.extracted,
-        result.inserted_conference,
-        result.inserted_career,
+        result.inserted_records,
         result.no_match,
         result.failed,
         result.skipped,
     )
+
+    messages = await _build_payment_extraction_messages(session_factory, result)
+    if not deliver:
+        return messages
+
+    target_channel = reply_channel_id or settings.discord_channel_payments
+    log_label = "sync-reply" if (reply_channel_id or interaction) else "#payments"
+    if messages:
+        await _deliver_discord_messages(
+            bot,
+            _chunk_discord_messages(messages, fallback="**Extraction**"),
+            channel_id=target_channel,
+            interaction=interaction,
+            log_label=log_label,
+        )
+    elif reply_channel_id is not None or interaction is not None:
+        status_lines = await _format_payment_candidate_status(session_factory)
+        await _deliver_discord_messages(
+            bot,
+            [
+                "💳 **Payment extraction завърши**\n"
+                "Няма pending payment имейли за обработка.\n"
+                + status_lines
+            ],
+            channel_id=target_channel,
+            interaction=interaction,
+            log_label=log_label,
+        )
+    return messages
+
+
+async def _build_event_extraction_messages(session_factory, result) -> list[str]:
+    from sqlalchemy import select
+
+    from assistant.db.models import CareerEvent, ConferenceEvent
 
     messages: list[str] = []
     if (
@@ -346,6 +377,39 @@ async def run_event_extraction(
         remaining = len(result.failures) - 5
         if remaining > 0:
             messages.append(f"_… и още **{remaining}** неуспешни извличания_")
+    return messages
+
+
+async def run_event_extraction(
+    bot: commands.Bot,
+    settings: Settings,
+    *,
+    reply_channel_id: int | None = None,
+    interaction: discord.Interaction | None = None,
+    deliver: bool = True,
+) -> list[str]:
+    session_factory = get_session_factory()
+    if session_factory is None:
+        logger.error("Session factory not initialized")
+        return []
+
+    logger.info("Event extraction starting")
+    result = await process_pending_event_messages(session_factory, settings)
+    logger.info(
+        "Event extraction done: processed=%d extracted=%d conf=%d career=%d "
+        "no_match=%d failed=%d skipped=%d",
+        result.processed,
+        result.extracted,
+        result.inserted_conference,
+        result.inserted_career,
+        result.no_match,
+        result.failed,
+        result.skipped,
+    )
+
+    messages = await _build_event_extraction_messages(session_factory, result)
+    if not deliver:
+        return messages
 
     target_channel = reply_channel_id or settings.discord_channel_events
     log_label = "sync-reply" if (reply_channel_id or interaction) else "#events"
@@ -371,6 +435,7 @@ async def run_event_extraction(
             interaction=interaction,
             log_label=log_label,
         )
+    return messages
 
 
 async def _format_event_candidate_status(session_factory) -> str:
@@ -390,22 +455,32 @@ async def _format_event_candidate_status(session_factory) -> str:
     return "Статуси: " + " · ".join(parts)
 
 
-async def extraction_job(bot: commands.Bot, settings: Settings) -> None:
+async def payment_extraction_job(
+    bot: commands.Bot,
+    settings: Settings,
+    *,
+    reply_channel_id: int | None = None,
+    interaction: discord.Interaction | None = None,
+) -> None:
     try:
-        await run_extraction(bot, settings)
-        await run_event_extraction(bot, settings)
+        await run_extraction(
+            bot,
+            settings,
+            reply_channel_id=reply_channel_id,
+            interaction=interaction,
+            deliver=True,
+        )
     except Exception:
-        logger.exception("Extraction job failed")
-        await _notify_payments(
-            bot,
-            settings,
-            ["**Extraction:** неочаквана грешка — виж логовете на сървъра."],
-        )
-        await _notify_events(
-            bot,
-            settings,
-            ["**Event extraction:** неочаквана грешка — виж логовете на сървъра."],
-        )
+        logger.exception("Payment extraction job failed")
+        target = reply_channel_id or settings.discord_channel_payments
+        error_message = "❌ **Payment extraction:** неочаквана грешка — виж логовете на бота."
+        if interaction is not None:
+            try:
+                await interaction.edit_original_response(content=error_message)
+                return
+            except discord.DiscordException:
+                logger.exception("Failed to deliver payment extraction error via interaction")
+        await _notify_payments(bot, settings, [error_message])
 
 
 async def event_extraction_job(

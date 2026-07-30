@@ -122,17 +122,21 @@ If `price_raw` appears in the body but not inside the quote, the price is droppe
 
 **Operational notes:**
 
-- Event extraction does **not** run on IMAP startup — use **`/sync events`** (or `/sync extract` / `/sync all`).
+- Event extraction does **not** run on IMAP startup — use **`/sync events`** (or **`/sync extract`** in `#events`).
 - **`/sync events`** posts results in the **channel where you run the command** (replaces the “thinking…” defer message).
+- **`/sync payments`** and **`/sync extract`** in `#payments` do the same for **payments only** (no events).
 - Default batch: **5 newest** pending candidates per run (`EVENT_EXTRACTION_BATCH_SIZE=5`).
 - LLM cost is reported in the same reply, like `#payments`.
 
 ```powershell
+/sync payments        # payment extraction only → reply in current channel
 /sync events          # event extraction only → reply in current channel
-/sync extract         # payments + events
+/sync extract         # in #payments → payments; in #events → events
 /sync imap            # IMAP + payment extraction (not events)
-/sync all             # IMAP + calendar + payments + events
+/sync all             # IMAP + calendar
 ```
+
+**`/sync extract`** е alias: в `#payments` → bills/receipts; в `#events` → DevBG mail. Извън тези канали — подсказка да ползваш `/sync payments` или `/sync events`.
 
 ## Quick start (local)
 
@@ -178,11 +182,12 @@ python -m assistant.main
 | Command              | Action                                           |
 | -------------------- | ------------------------------------------------ |
 | `/ping`              | Health check                                     |
-| `/sync` → `imap`     | Email sync + payment extraction                  |
-| `/sync` → `calendar` | ICS sync                                         |
-| `/sync` → `extract`  | Re-run payment + event extraction                |
-| `/sync` → `events`   | Event extraction only (reply in current channel) |
-| `/sync` → `all`      | IMAP + calendar + payments + events              |
+| `/sync` → `imap` | Email sync + payment extraction |
+| `/sync` → `calendar` | ICS sync |
+| `/sync` → `payments` | Payment extraction only (reply in current channel) |
+| `/sync` → `extract` | In `#payments` or `#events` only (same as payments/events there) |
+| `/sync` → `events` | Event extraction only (reply in current channel) |
+| `/sync` → `all` | IMAP + calendar |
 
 ### How it works without VPS deploy
 

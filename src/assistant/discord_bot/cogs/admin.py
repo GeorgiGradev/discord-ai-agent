@@ -8,11 +8,16 @@ from discord import app_commands
 from discord.ext import commands
 
 from assistant.config import Settings
-from assistant.scheduler.jobs import event_extraction_job, extraction_job, ics_sync_job, imap_sync_job
+from assistant.scheduler.jobs import (
+    event_extraction_job,
+    ics_sync_job,
+    imap_sync_job,
+    payment_extraction_job,
+)
 
 logger = logging.getLogger(__name__)
 
-SYNC_TARGETS = {"imap", "calendar", "extract", "events", "all"}
+SYNC_TARGETS = {"imap", "calendar", "extract", "events", "payments", "all"}
 
 
 class AdminCog(commands.Cog):
@@ -42,7 +47,8 @@ class AdminCog(commands.Cog):
             app_commands.Choice(name="all (imap + calendar + extract + events)", value="all"),
             app_commands.Choice(name="imap (email + extract + events)", value="imap"),
             app_commands.Choice(name="calendar", value="calendar"),
-            app_commands.Choice(name="extract (payments + events)", value="extract"),
+            app_commands.Choice(name="payments (Payment label only)", value="payments"),
+            app_commands.Choice(name="extract (#payments or #events)", value="extract"),
             app_commands.Choice(name="events (DevBG/Udemy/LocalAGI only)", value="events"),
         ]
     )
@@ -55,7 +61,7 @@ class AdminCog(commands.Cog):
             return
         if target_value not in SYNC_TARGETS:
             await interaction.response.send_message(
-                "Невалидна цел. Ползвай: imap, calendar, extract, events, all.",
+                "Невалидна цел. Ползвай: imap, calendar, payments, extract, events, all.",
                 ephemeral=True,
             )
             return
@@ -66,7 +72,7 @@ class AdminCog(commands.Cog):
             return
 
         reply_channel_id = interaction.channel_id
-        post_in_channel = target_value == "events"
+        post_in_channel = target_value in {"events", "extract", "payments"}
         await interaction.response.defer(
             ephemeral=not post_in_channel,
             thinking=True,
@@ -77,8 +83,35 @@ class AdminCog(commands.Cog):
             try:
                 if target_value in {"imap", "all"}:
                     await imap_sync_job(self.bot, self.settings, secret_box)
+                elif target_value == "payments":
+                    await payment_extraction_job(
+                        self.bot,
+                        self.settings,
+                        reply_channel_id=reply_channel_id,
+                        interaction=interaction,
+                    )
                 elif target_value == "extract":
-                    await extraction_job(self.bot, self.settings)
+                    if reply_channel_id == self.settings.discord_channel_payments:
+                        await payment_extraction_job(
+                            self.bot,
+                            self.settings,
+                            reply_channel_id=reply_channel_id,
+                            interaction=interaction,
+                        )
+                    elif reply_channel_id == self.settings.discord_channel_events:
+                        await event_extraction_job(
+                            self.bot,
+                            self.settings,
+                            reply_channel_id=reply_channel_id,
+                            interaction=interaction,
+                        )
+                    else:
+                        await interaction.edit_original_response(
+                            content=(
+                                "📋 **`/sync extract`** работи само в `#payments` или `#events`.\n"
+                                "Ползвай **`/sync payments`** или **`/sync events`**."
+                            )
+                        )
                 elif target_value == "events":
                     await event_extraction_job(
                         self.bot,
