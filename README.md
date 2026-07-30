@@ -78,7 +78,9 @@ Google Calendar (ICS) ──► calendar_events ──► Discord #general
 | LLM cost report in `#payments` after each batch     | ✅       |
 | Conference/career events → `#events` (B5)           | ✅       |
 | Event citation validation (DevBG-tolerant matching) | ✅       |
-| Grounded chat + memory (Sonnet + embeddings)        | 🔜 C1–C3 |
+| Vector memory — embed, chunk, index, search (C1.2)  | ✅       |
+| Memory wiring + backfill (C1.3)                     | 🔜       |
+| Grounded chat + memory (Sonnet)                     | 🔜 C2–C3 |
 
 ## Extraction cascade
 
@@ -214,12 +216,14 @@ src/assistant/
     llm_fallback.py    Haiku structured extraction (payments)
     llm_cost.py        token usage + USD estimate
     pipeline.py        payment cascade orchestration
-  discord_bot/         client, slash commands, #events formatting
+  memory/              embeddings, chunks, index, search (C1)
+  discord_bot/         client, slash commands, formatting
   scheduler/           periodic sync + Discord notify
 docs/
   screenshots/         README screenshots (incl. events-extraction.png)
 scripts/
-  verify_anthropic.py  one-shot API key check
+  verify_anthropic.py  one-shot Anthropic API key check
+  verify_openai_embeddings.py  one-shot OpenAI embedding check
 tests/
   fixtures/emails/     anonymized samples
   eval/                manifest-driven extraction eval

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     memory_similarity_threshold: float = Field(
         default=0.35, alias="MEMORY_SIMILARITY_THRESHOLD"
     )
+    memory_embed_batch_size: int = Field(default=32, alias="MEMORY_EMBED_BATCH_SIZE")
     citation_max_retries: int = Field(default=1, alias="CITATION_MAX_RETRIES")
     llm_extraction_enabled: bool = Field(default=True, alias="LLM_EXTRACTION_ENABLED")
     event_extraction_batch_size: int = Field(default=5, alias="EVENT_EXTRACTION_BATCH_SIZE")
