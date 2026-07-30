@@ -72,6 +72,8 @@ Google Calendar (ICS) ──► calendar_events ──► Discord #general
 | Postgres 17 + pgvector, Alembic                     | ✅       |
 | Multi-account IMAP sync (UID cursor, X-GM-MSGID)    | ✅       |
 | Calendar ICS sync (ETag, RRULE expansion)           | ✅       |
+| IMAP IDLE + notify only on new mail                 | ✅       |
+| Calendar daily cron + sync on bot startup           | ✅       |
 | Payment extraction — UBB & Anthropic templates      | ✅       |
 | Eval harness (`tests/eval/`)                        | ✅       |
 | LLM fallback — Haiku + verbatim validation          | ✅       |
@@ -139,6 +141,16 @@ If `price_raw` appears in the body but not inside the quote, the price is droppe
 ```
 
 **`/sync extract`** е alias: в `#payments` → bills/receipts; в `#events` → DevBG mail. Извън тези канали — подсказка да ползваш `/sync payments` или `/sync events`.
+
+### Automatic sync (background)
+
+| Source | When | Discord `#general` |
+|--------|------|---------------------|
+| **IMAP** | IMAP IDLE — при ново писмо | Само ако има нови имейли (или грешка) |
+| **Calendar** | При старт на бота + веднъж дневно (`ICS_SYNC_HOUR` / `ICS_SYNC_MINUTE`) | При старт винаги; daily само при промяна в календара |
+| **Payments** | След IMAP sync с нови имейли | `#payments` (extraction pipeline) |
+
+Ръчно: `/sync imap` и `/sync calendar` винаги показват резултат.
 
 ## Quick start (local)
 

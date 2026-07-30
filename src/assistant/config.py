@@ -29,7 +29,10 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
 
     imap_sync_interval: int = Field(default=300, alias="IMAP_SYNC_INTERVAL")
+    imap_idle_timeout: int = Field(default=300, alias="IMAP_IDLE_TIMEOUT")
     ics_sync_interval: int = Field(default=900, alias="ICS_SYNC_INTERVAL")
+    ics_sync_hour: int = Field(default=8, alias="ICS_SYNC_HOUR")
+    ics_sync_minute: int = Field(default=0, alias="ICS_SYNC_MINUTE")
 
     journal_hour: int = Field(default=20, alias="JOURNAL_HOUR")
     journal_minute: int = Field(default=0, alias="JOURNAL_MINUTE")

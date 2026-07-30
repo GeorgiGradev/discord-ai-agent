@@ -82,7 +82,9 @@ class AdminCog(commands.Cog):
             secret_box = self.bot.secret_box  # type: ignore[attr-defined]
             try:
                 if target_value in {"imap", "all"}:
-                    await imap_sync_job(self.bot, self.settings, secret_box)
+                    await imap_sync_job(
+                        self.bot, self.settings, secret_box, force_notify=True
+                    )
                 elif target_value == "payments":
                     await payment_extraction_job(
                         self.bot,
@@ -120,7 +122,12 @@ class AdminCog(commands.Cog):
                         interaction=interaction,
                     )
                 if target_value in {"calendar", "all"}:
-                    await ics_sync_job(self.bot, self.settings, secret_box)
+                    await ics_sync_job(
+                        self.bot,
+                        self.settings,
+                        secret_box,
+                        notify_if_unchanged=True,
+                    )
 
                 if not post_in_channel:
                     await interaction.followup.send(

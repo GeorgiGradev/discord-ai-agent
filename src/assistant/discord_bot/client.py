@@ -9,7 +9,8 @@ from discord.ext import commands
 
 from assistant.config import Settings
 from assistant.crypto import SecretBox
-from assistant.scheduler.jobs import ics_sync_job, imap_sync_job
+from assistant.ingest.imap_idle import start_imap_idle_monitors
+from assistant.scheduler.jobs import ics_sync_job
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +59,16 @@ class AssistantBot(commands.Bot):
         self._startup_done = True
         if self.scheduler is not None:
             self.scheduler.start()
-            logger.info("Starting initial IMAP and calendar sync")
-            _spawn_background(imap_sync_job(self, self.settings, self.secret_box))
-            _spawn_background(ics_sync_job(self, self.settings, self.secret_box))
+            logger.info("Starting calendar sync on startup and IMAP IDLE monitors")
+            _spawn_background(
+                ics_sync_job(
+                    self,
+                    self.settings,
+                    self.secret_box,
+                    notify_if_unchanged=True,
+                )
+            )
+            _spawn_background(start_imap_idle_monitors(self, self.settings, self.secret_box))
 
     async def on_app_command_error(
         self,

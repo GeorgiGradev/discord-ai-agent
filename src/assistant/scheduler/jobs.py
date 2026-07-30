@@ -515,7 +515,13 @@ async def event_extraction_job(
         )
 
 
-async def run_ics_sync(bot: commands.Bot, settings: Settings, secret_box: SecretBox) -> None:
+async def run_ics_sync(
+    bot: commands.Bot,
+    settings: Settings,
+    secret_box: SecretBox,
+    *,
+    notify_if_unchanged: bool = True,
+) -> None:
     session_factory = get_session_factory()
     if session_factory is None:
         logger.error("Session factory not initialized")
@@ -541,15 +547,27 @@ async def run_ics_sync(bot: commands.Bot, settings: Settings, secret_box: Secret
                 result.total_in_window,
                 len(result.upcoming),
             )
-    if results:
+    if results and (
+        notify_if_unchanged
+        or any(result.error for result in results)
+        or any(not result.skipped for result in results)
+    ):
         await _notify_general(bot, settings, _format_ics_summary(results, settings.journal_timezone))
-    else:
+    elif not results:
         logger.warning("ICS sync: no accounts with ICS URL configured")
 
 
-async def ics_sync_job(bot: commands.Bot, settings: Settings, secret_box: SecretBox) -> None:
+async def ics_sync_job(
+    bot: commands.Bot,
+    settings: Settings,
+    secret_box: SecretBox,
+    *,
+    notify_if_unchanged: bool = True,
+) -> None:
     try:
-        await run_ics_sync(bot, settings, secret_box)
+        await run_ics_sync(
+            bot, settings, secret_box, notify_if_unchanged=notify_if_unchanged
+        )
     except Exception:
         logger.exception("Scheduled ICS sync job failed")
         await _notify_general(
@@ -559,7 +577,13 @@ async def ics_sync_job(bot: commands.Bot, settings: Settings, secret_box: Secret
         )
 
 
-async def run_imap_sync(bot: commands.Bot, settings: Settings, secret_box: SecretBox) -> None:
+async def run_imap_sync(
+    bot: commands.Bot,
+    settings: Settings,
+    secret_box: SecretBox,
+    *,
+    force_notify: bool = False,
+) -> None:
     session_factory = get_session_factory()
     if session_factory is None:
         logger.error("Session factory not initialized")
@@ -569,13 +593,27 @@ async def run_imap_sync(bot: commands.Bot, settings: Settings, secret_box: Secre
         await bootstrap_accounts(session, settings, secret_box)
 
     results = await sync_all_accounts(session_factory, settings, secret_box)
-    await _notify_general(bot, settings, _format_sync_summary(results))
-    await run_extraction(bot, settings)
+    total_inserted = sum(result.inserted for result in results)
+    has_errors = any(result.error for result in results)
+
+    if force_notify or total_inserted > 0 or has_errors:
+        await _notify_general(bot, settings, _format_sync_summary(results))
+    else:
+        logger.info("IMAP sync: no new messages — skipping Discord notification")
+
+    if total_inserted > 0:
+        await run_extraction(bot, settings)
 
 
-async def imap_sync_job(bot: commands.Bot, settings: Settings, secret_box: SecretBox) -> None:
+async def imap_sync_job(
+    bot: commands.Bot,
+    settings: Settings,
+    secret_box: SecretBox,
+    *,
+    force_notify: bool = False,
+) -> None:
     try:
-        await run_imap_sync(bot, settings, secret_box)
+        await run_imap_sync(bot, settings, secret_box, force_notify=force_notify)
     except Exception:
         logger.exception("Scheduled IMAP sync job failed")
         await _notify_general(
@@ -588,30 +626,26 @@ async def imap_sync_job(bot: commands.Bot, settings: Settings, secret_box: Secre
 def create_scheduler(
     bot: commands.Bot, settings: Settings, secret_box: SecretBox
 ) -> AsyncIOScheduler:
+    from apscheduler.triggers.cron import CronTrigger
+
     scheduler = AsyncIOScheduler(timezone=settings.journal_timezone)
     scheduler.add_job(
-        imap_sync_job,
-        trigger="interval",
-        seconds=settings.imap_sync_interval,
-        args=[bot, settings, secret_box],
-        id="imap_sync",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
-    scheduler.add_job(
         ics_sync_job,
-        trigger="interval",
-        seconds=settings.ics_sync_interval,
+        trigger=CronTrigger(
+            hour=settings.ics_sync_hour,
+            minute=settings.ics_sync_minute,
+        ),
+        kwargs={"notify_if_unchanged": False},
         args=[bot, settings, secret_box],
-        id="ics_sync",
+        id="ics_sync_daily",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
     logger.info(
-        "Scheduled jobs: imap every %ss, calendar every %ss",
-        settings.imap_sync_interval,
-        settings.ics_sync_interval,
+        "Scheduled jobs: IMAP IDLE (on new mail), calendar daily at %02d:%02d %s",
+        settings.ics_sync_hour,
+        settings.ics_sync_minute,
+        settings.journal_timezone,
     )
     return scheduler
