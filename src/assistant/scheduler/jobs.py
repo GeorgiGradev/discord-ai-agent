@@ -29,6 +29,7 @@ from assistant.extraction.events.pipeline import (
 )
 from assistant.extraction.llm_cost import format_llm_usage_summary
 from assistant.extraction.pipeline import process_pending_messages
+from assistant.memory.wire import index_all_payment_records, index_payment_record_ids
 from assistant.ingest.ics_sync import IcsSyncResult, UpcomingEventSummary, sync_all_calendars
 from assistant.ingest.imap_sync import AccountSyncResult, SyncedMessageSummary, sync_all_accounts
 
@@ -289,6 +290,19 @@ async def run_extraction(
         result.skipped,
     )
 
+    if result.new_record_ids:
+        mem_summary = await index_payment_record_ids(
+            session_factory, settings, result.new_record_ids
+        )
+        logger.info(
+            "Memory index after extraction: inserted=%d updated=%d skipped=%d failed=%d tokens=%d",
+            mem_summary.inserted,
+            mem_summary.updated,
+            mem_summary.skipped,
+            mem_summary.failed,
+            mem_summary.total_tokens,
+        )
+
     messages = await _build_payment_extraction_messages(session_factory, result)
     if not deliver:
         return messages
@@ -480,6 +494,43 @@ async def payment_extraction_job(
                 return
             except discord.DiscordException:
                 logger.exception("Failed to deliver payment extraction error via interaction")
+        await _notify_payments(bot, settings, [error_message])
+
+
+async def memory_reindex_job(
+    bot: commands.Bot,
+    settings: Settings,
+    *,
+    reply_channel_id: int | None = None,
+    interaction: discord.Interaction | None = None,
+) -> None:
+    from assistant.memory.wire import format_memory_index_summary
+
+    session_factory = get_session_factory()
+    if session_factory is None:
+        logger.error("Session factory not initialized")
+        return
+
+    try:
+        summary = await index_all_payment_records(session_factory, settings)
+        message = format_memory_index_summary(summary)
+        target_channel = reply_channel_id or settings.discord_channel_payments
+        await _deliver_discord_messages(
+            bot,
+            [message],
+            channel_id=target_channel,
+            interaction=interaction,
+            log_label="sync-reply" if (reply_channel_id or interaction) else "#payments",
+        )
+    except Exception:
+        logger.exception("Memory reindex job failed")
+        error_message = "❌ **Memory reindex:** неочаквана грешка — виж логовете на бота."
+        if interaction is not None:
+            try:
+                await interaction.edit_original_response(content=error_message)
+                return
+            except discord.DiscordException:
+                logger.exception("Failed to deliver memory reindex error via interaction")
         await _notify_payments(bot, settings, [error_message])
 
 

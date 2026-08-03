@@ -81,7 +81,7 @@ Google Calendar (ICS) ──► calendar_events ──► Discord #general
 | Conference/career events → `#events` (B5)           | ✅       |
 | Event citation validation (DevBG-tolerant matching) | ✅       |
 | Vector memory — embed, chunk, index, search (C1.2)  | ✅       |
-| Memory wiring + backfill (C1.3)                     | 🔜       |
+| Memory wiring + backfill (C1.3)                     | ✅       |
 | Grounded chat + memory (Sonnet)                     | 🔜 C2–C3 |
 
 ## Extraction cascade
@@ -137,6 +137,7 @@ If `price_raw` appears in the body but not inside the quote, the price is droppe
 /sync events          # event extraction only → reply in current channel
 /sync extract         # in #payments → payments; in #events → events
 /sync imap            # IMAP + payment extraction (not events)
+/sync reindex         # backfill vector memory from all payment records
 /sync all             # IMAP + calendar
 ```
 
@@ -149,8 +150,9 @@ If `price_raw` appears in the body but not inside the quote, the price is droppe
 | **IMAP** | IMAP IDLE — при ново писмо | Само ако има нови имейли (или грешка) |
 | **Calendar** | При старт на бота + веднъж дневно (`ICS_SYNC_HOUR` / `ICS_SYNC_MINUTE`) | При старт винаги; daily само при промяна в календара |
 | **Payments** | След IMAP sync с нови имейли | `#payments` (extraction pipeline) |
+| **Memory** | След успешен payment extract (нов record) | само в логовете |
 
-Ръчно: `/sync imap` и `/sync calendar` винаги показват резултат.
+Ръчно: `/sync imap` и `/sync calendar` винаги показват резултат. **`/sync reindex`** — пълен backfill на vector memory.
 
 ## Quick start (local)
 
@@ -174,6 +176,10 @@ alembic upgrade head
 # 5. Verify Anthropic key (optional, ~$0.001)
 python scripts/verify_anthropic.py
 
+# 5b. Verify OpenAI embeddings + backfill existing payments (optional)
+python scripts/verify_openai_embeddings.py
+python scripts/backfill_memory.py
+
 # 6. Run the bot (must stay running while you use Discord)
 python -m assistant.main
 ```
@@ -187,9 +193,10 @@ python -m assistant.main
 | `ACCOUNT_*`              | Two Gmail IMAP accounts + labels                    |
 | `DATABASE_URL`           | Postgres (local: `@localhost:5432`)                 |
 | `ANTHROPIC_API_KEY`      | Haiku fallback extraction                           |
+| `OPENAI_API_KEY`           | Payment memory embeddings (C1.3+)                   |
 | `LLM_EXTRACTION_ENABLED` | `true` / `false` — disable LLM without removing key |
 
-`OPENAI_API_KEY` is **not needed yet** (C1 embeddings). Sonnet is for C2 chat.
+`OPENAI_API_KEY` е нужен за vector memory (auto-index след extract + `/sync reindex`). Sonnet е за C2 chat.
 
 ### Discord commands
 
@@ -201,6 +208,7 @@ python -m assistant.main
 | `/sync` → `payments` | Payment extraction only (reply in current channel) |
 | `/sync` → `extract` | In `#payments` or `#events` only (same as payments/events there) |
 | `/sync` → `events` | Event extraction only (reply in current channel) |
+| `/sync` → `reindex` | Backfill vector memory from all payment records |
 | `/sync` → `all` | IMAP + calendar |
 
 ### How it works without VPS deploy

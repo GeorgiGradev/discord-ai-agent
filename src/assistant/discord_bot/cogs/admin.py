@@ -12,12 +12,13 @@ from assistant.scheduler.jobs import (
     event_extraction_job,
     ics_sync_job,
     imap_sync_job,
+    memory_reindex_job,
     payment_extraction_job,
 )
 
 logger = logging.getLogger(__name__)
 
-SYNC_TARGETS = {"imap", "calendar", "extract", "events", "payments", "all"}
+SYNC_TARGETS = {"imap", "calendar", "extract", "events", "payments", "reindex", "all"}
 
 
 class AdminCog(commands.Cog):
@@ -50,6 +51,7 @@ class AdminCog(commands.Cog):
             app_commands.Choice(name="payments (Payment label only)", value="payments"),
             app_commands.Choice(name="extract (#payments or #events)", value="extract"),
             app_commands.Choice(name="events (DevBG/Udemy/LocalAGI only)", value="events"),
+            app_commands.Choice(name="reindex (vector memory backfill)", value="reindex"),
         ]
     )
     async def sync(self, interaction: discord.Interaction, target: app_commands.Choice[str]) -> None:
@@ -61,7 +63,7 @@ class AdminCog(commands.Cog):
             return
         if target_value not in SYNC_TARGETS:
             await interaction.response.send_message(
-                "Невалидна цел. Ползвай: imap, calendar, payments, extract, events, all.",
+                "Невалидна цел. Ползвай: imap, calendar, payments, extract, events, reindex, all.",
                 ephemeral=True,
             )
             return
@@ -72,7 +74,7 @@ class AdminCog(commands.Cog):
             return
 
         reply_channel_id = interaction.channel_id
-        post_in_channel = target_value in {"events", "extract", "payments"}
+        post_in_channel = target_value in {"events", "extract", "payments", "reindex"}
         await interaction.response.defer(
             ephemeral=not post_in_channel,
             thinking=True,
@@ -116,6 +118,13 @@ class AdminCog(commands.Cog):
                         )
                 elif target_value == "events":
                     await event_extraction_job(
+                        self.bot,
+                        self.settings,
+                        reply_channel_id=reply_channel_id,
+                        interaction=interaction,
+                    )
+                elif target_value == "reindex":
+                    await memory_reindex_job(
                         self.bot,
                         self.settings,
                         reply_channel_id=reply_channel_id,
